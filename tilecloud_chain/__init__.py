@@ -35,6 +35,7 @@ import boto.sqs
 from boto.sqs.jsonmessage import JSONMessage
 
 from tilecloud import Tile, BoundingPyramid, TileCoord
+from tilecloud.lib.PIL_ import FORMAT_BY_CONTENT_TYPE
 from tilecloud.grid.free import FreeTileGrid
 from tilecloud.store.metatile import MetaTileSplitterTileStore
 from tilecloud.store.s3 import S3TileStore
@@ -545,6 +546,8 @@ class TileGeneration:
             error = self.validate(self.config['sns'], 'sns', 'topic', attribute_type=str, required=True) or error
             error = self.validate(self.config['sns'], 'sns', 'region', attribute_type=str, default='eu-west-1') or error
 
+        error = self.validate(self.config, "", "format_by_content_type", attribute_type=dict, default={}) or error
+
         if error:
             exit(1)
 
@@ -582,6 +585,8 @@ class TileGeneration:
 
         if error:  # pragma: no cover
             exit(1)
+
+        FORMAT_BY_CONTENT_TYPE.update(self.config["format_by_content_type"])
 
         self.layer = None
         if layer_name and not error:
