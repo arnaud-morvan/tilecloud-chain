@@ -6,6 +6,7 @@ import logging
 import boto
 import re
 import socket
+from os import path
 from functools import reduce
 from boto import sns
 from datetime import timedelta
@@ -60,6 +61,14 @@ def main():
     parser.add_argument(
         '--shutdown', default=False, action="store_true",
         help='Shut done the remote host after the task.'
+    )
+    parser.add_argument(
+        '--wait', default=False, action="store_true",
+        help='Wait that all the tasks will finish.'
+    )
+    parser.add_argument(
+        '--local', default=False, action="store_true",
+        help='Run the generation locally'
     )
 
     options = parser.parse_args()
@@ -204,8 +213,10 @@ def main():
 
         project_dir = gene.config['ec2']['code_folder']
         run_remote(
-            './buildout/bin/generate_tiles ' +
-            ' '.join([str(a) for a in arguments]), host, project_dir, gene
+            "%s/generate_tiles %s" % (
+                path.dirname(sys.argv[0]),
+                ' '.join([str(a) for a in arguments])
+            ), host, project_dir, gene
         )
 
     if options.tiles_gen:  # pragma: no cover
@@ -220,15 +231,21 @@ def main():
         for i in range(gene.config['ec2']['number_process']):
             processes.append(
                 run_remote_process(
-                    './buildout/bin/generate_tiles ' +
-                    ' '.join([str(a) for a in arguments]), host, project_dir, gene)
+                    "%s/generate_tiles %s" % (
+                        path.dirname(sys.argv[0]),
+                        ' '.join([str(a) for a in arguments])
+                    ), host, project_dir, gene
+                )
             )
 
-        if options.shutdown:
+        if options.shutdown or options.wait:
             for p in processes:
                 p.communicate()  # wait process end
         else:
             print('Tile generation started in background')
+
+        if options.wait:
+            print('Tile generation has finished')
 
         if options.shutdown:
             run_remote('sudo shutdown 0')
@@ -307,6 +324,14 @@ def run_local(cmd):
     return result
 
 
+def run_process(options, cmd, host, project_dir, gene):
+    if options.local:
+        logger.debug('Run: %s.' % ' '.join([quote(c) for c in cmd]))
+        return Popen(cmd, stdout=PIPE, stderr=PIPE)
+    else:
+        return run_remote_process(cmd, host, project_dir, gene)
+
+
 def run_remote_process(remote_cmd, host, project_dir, gene):
     cmd = ['ssh']
     if 'ssh_options' in gene.config['ec2']:  # pragma: no cover
@@ -332,6 +357,13 @@ def run_remote_process(remote_cmd, host, project_dir, gene):
 
     logger.debug('Run: %s.' % ' '.join([quote(c) for c in cmd]))
     return Popen(cmd, stdout=PIPE, stderr=PIPE)
+
+
+def run(options, cmd, host, project_dir, gene):
+    result = run_process(options, cmd, host, project_dir, gene)
+    logger.info(result[0])
+    logger.error(result[1])
+    return result
 
 
 def run_remote(remote_cmd, host, project_dir, gene):
