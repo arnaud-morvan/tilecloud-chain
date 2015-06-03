@@ -7,7 +7,7 @@ class Create(Template):  # pragma: no cover
 
     def post(self, *args, **kargs):
         super(Create, self).post(*args, **kargs)
-        print """
+        print("""
 Welcome to TileCloud chain.
 ===========================
 
@@ -29,7 +29,7 @@ extends = vars
 instanceid = main
 
 [facts]
-recipe = c2c.recipe.facts"""
+recipe = c2c.recipe.facts""")
 
 
 class Ec2(Template):  # pragma: no cover

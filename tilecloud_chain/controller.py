@@ -10,7 +10,6 @@ from copy import copy
 from argparse import ArgumentParser
 from hashlib import sha1
 from urllib import urlencode
-from cStringIO import StringIO
 
 import requests
 from bottle import jinja2_template
@@ -20,6 +19,11 @@ from tilecloud.lib.PIL_ import FORMAT_BY_CONTENT_TYPE
 
 from tilecloud_chain import TileGeneration, add_comon_options, get_tile_matrix_identifier
 from tilecloud_chain.cost import validate_calculate_cost
+
+if sys.version_info.major >= 3:
+    from io import StringIO
+else:
+    from cStringIO import StringIO
 
 
 logger = logging.getLogger(__name__)
@@ -75,7 +79,7 @@ def main():
         for grid in gene.config['grids'].values():
             if 'obj' in grid:
                 del grid['obj']
-        print yaml.dump(gene.config)
+        print(yaml.dump(gene.config))
         sys.exit(0)
 
     if options.legends:

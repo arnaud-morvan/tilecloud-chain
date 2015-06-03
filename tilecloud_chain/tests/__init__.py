@@ -5,8 +5,12 @@ import sys
 import os
 import re
 import shutil
-from cStringIO import StringIO
 from unittest2 import TestCase
+if sys.version_info.major >= 3:
+    from io import StringIO
+    unicode = str
+else:
+    from cStringIO import StringIO
 
 log = logging.getLogger("tests")
 
