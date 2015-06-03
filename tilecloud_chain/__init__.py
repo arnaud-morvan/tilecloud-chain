@@ -17,6 +17,9 @@ if sys.version_info.major >= 3:
     from io import StringIO
 else:
     from cStringIO import StringIO
+    import itertools
+    map = itertools.imap
+    filter = itertools.ifilter
 
 try:
     import bsddb3 as bsddb
