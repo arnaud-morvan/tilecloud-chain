@@ -11,25 +11,8 @@ class Create(Template):  # pragma: no cover
 Welcome to TileCloud chain.
 ===========================
 
-By default this scaffold use variable from Puppet facter,
-to make it working you should have this in your buildout.cfg:
-
-[buildout]
-parts = ...
-    template
-
-[template]
-recipe = z3c.recipe.filetemplate
-source-directory = .
-exclude-directories = buildout
-extends = vars
-    facts
-
-[vars]
-instanceid = main
-
-[facts]
-recipe = c2c.recipe.facts""")
+By default this scaffold use variable from Puppet facter.
+""")
 
 
 class Ec2(Template):  # pragma: no cover
