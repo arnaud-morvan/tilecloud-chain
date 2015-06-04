@@ -6,11 +6,14 @@ import logging
 import boto
 import re
 import socket
+import subprocess
 from os import path
+from time import sleep
 from functools import reduce
+from threading import Thread
 from boto import sns
 from datetime import timedelta
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, STDOUT
 from argparse import ArgumentParser
 
 from tilecloud_chain import TileGeneration, add_comon_options, quote
@@ -125,20 +128,21 @@ def main():
             cmd += ['-e', 'ssh ' + gene.config['ec2']['ssh_options']]
             ssh_options = gene.config['ec2']['ssh_options']
 
-        project_dir = gene.config['ec2']['code_folder']
+        project_dir = None if options.local else gene.config['ec2']['code_folder']
         cmd += ['-r', '.', host + ':' + project_dir]
         run_local(cmd)
 
         for cmd in gene.config['ec2']['build_cmds']:
-            run_remote(cmd, host, project_dir, gene)
+            run(options, cmd, host, project_dir, gene)
         if 'apache_content' in gene.config['ec2'] and 'apache_config' in gene.config['ec2']:
-            run_remote(
+            run(
+                options,
                 'echo %s > %s' % (
                     gene.config['ec2']['apache_content'],
                     gene.config['ec2']['apache_config']
                 ), host, project_dir, gene
             )
-        run_remote('sudo apache2ctl graceful', host, project_dir, gene)
+        run(options, 'sudo apache2ctl graceful', host, project_dir, gene)
 
     # deploy
     if options.deploy_database:
@@ -154,13 +158,16 @@ def main():
         arguments.extend(['--role', 'local'])
         arguments.extend(['--time', str(options.time)])
 
-        project_dir = gene.config['ec2']['code_folder']
+        project_dir = None if options.local else gene.config['ec2']['code_folder']
         processes = []
         for i in range(gene.config['ec2']['number_process']):
             processes.append(
-                run_remote_process(
-                    './buildout/bin/generate_tiles ' +
-                    ' '.join([str(a) for a in arguments]), host, project_dir, gene
+                run_process(
+                    options,
+                    "%s/generate_tiles %s" % (
+                        path.dirname(sys.argv[0]),
+                        ' '.join([str(a) for a in arguments]), host, project_dir, gene
+                    )
                 )
             )
 
@@ -202,53 +209,74 @@ def main():
         tile_size: %0.3f''' % (mean_time_ms, mean_time_ms, mean_size_kb))
 
         if options.shutdown:  # pragma: no cover
-            run_remote('sudo shutdown 0', host, project_dir, gene)
+            run(options, 'sudo shutdown 0', host, project_dir, gene)
         sys.exit(0)
 
+    """
     if options.fill_queue:  # pragma: no cover
         print("==== Till queue ====")
         # TODO test
         arguments = _get_arguments(options)
-        arguments.extend(['--role', 'master'])
+        arguments.extend(['--role', 'master', '--quiet'])
 
-        project_dir = gene.config['ec2']['code_folder']
-        run_remote(
+        project_dir = None if options.local else gene.config['ec2']['code_folder']
+        print path.abspath(path.dirname(sys.argv[0]))
+        run_process(
+            options,
             "%s/generate_tiles %s" % (
                 path.dirname(sys.argv[0]),
                 ' '.join([str(a) for a in arguments])
             ), host, project_dir, gene
         )
+        sleep(5)
+        attributes = gene.get_sqs_queue().get_attributes()
+        print(
+            "\rTiles to generate: %s/%s" % (
+                attributes['ApproximateNumberOfMessages'],
+                attributes['ApproximateNumberOfMessagesNotVisible'],
+            )
+        )
+        """
 
     if options.tiles_gen:  # pragma: no cover
         print("==== Generate tiles ====")
-        # TODO test
-        arguments = _get_arguments(options)
-        arguments.extend(['--role', 'slave'])
-        arguments.append("--daemonize")
-
-        project_dir = gene.config['ec2']['code_folder']
-        processes = []
-        for i in range(gene.config['ec2']['number_process']):
-            processes.append(
-                run_remote_process(
-                    "%s/generate_tiles %s" % (
-                        path.dirname(sys.argv[0]),
-                        ' '.join([str(a) for a in arguments])
-                    ), host, project_dir, gene
-                )
-            )
-
-        if options.shutdown or options.wait:
-            for p in processes:
-                p.communicate()  # wait process end
-        else:
-            print('Tile generation started in background')
 
         if options.wait:
-            print('Tile generation has finished')
+            print("")
+
+            class Status(Thread):
+                def run(self):  # pragma: no cover
+                    while True:
+                        attributes = gene.get_sqs_queue().get_attributes()
+                        print(
+                            "\rTiles to generate/generating: %s/%s" % (
+                                attributes['ApproximateNumberOfMessages'],
+                                attributes['ApproximateNumberOfMessagesNotVisible'],
+                            )
+                        )
+
+                        sleep(1)
+            status_thread = Status()
+            status_thread.setDaemon(True)
+            status_thread.start()
+
+        arguments = _get_arguments(options)
+        arguments.extend(['--role', 'slave', '--quiet'])
+
+        project_dir = None if options.local else gene.config['ec2']['code_folder']
+        for i in range(gene.config['ec2']['number_process']):
+            run_process(
+                options,
+                "%s/generate_tiles %s" % (
+                    path.dirname(sys.argv[0]),
+                    ' '.join([str(a) for a in arguments])
+                ), host, project_dir, gene
+            )
+
+        print('Tile generation started')
 
         if options.shutdown:
-            run_remote('sudo shutdown 0')
+            run(options, 'sudo shutdown 0')
 
         if 'sns' in gene.config:
             if 'region' in gene.config['sns']:
@@ -326,8 +354,11 @@ def run_local(cmd):
 
 def run_process(options, cmd, host, project_dir, gene):
     if options.local:
+        if type(cmd) != list:
+            cmd = cmd.split(' ')
         logger.debug('Run: %s.' % ' '.join([quote(c) for c in cmd]))
-        return Popen(cmd, stdout=PIPE, stderr=PIPE)
+        task = Run(cmd)
+        task.start()
     else:
         return run_remote_process(cmd, host, project_dir, gene)
 
@@ -359,17 +390,43 @@ def run_remote_process(remote_cmd, host, project_dir, gene):
     return Popen(cmd, stdout=PIPE, stderr=PIPE)
 
 
+class Run(Thread):
+    def __init__(self, cmd):
+        Thread.__init__(self)
+        if type(cmd) != list:
+            cmd = cmd.split(' ')
+        self.cmd = cmd
+
+    def run(self):
+        subprocess.call(self.cmd)
+        #result = subprocess.check_output(self.cmd, stderr=STDOUT)
+        print("End")
+        #if len(result) != 0:
+        #    logger.error(result)
+
+
 def run(options, cmd, host, project_dir, gene):
-    result = run_process(options, cmd, host, project_dir, gene)
-    logger.info(result[0])
-    logger.error(result[1])
-    return result
+    if options.local:
+        if type(cmd) != list:
+            cmd = cmd.split(' ')
+        subprocess.call(cmd)
+        #result = subprocess.check_output(cmd, stderr=STDOUT)
+        #if len(result) != 0:
+        #    logger.error(result)
+    else:
+        result = run_process(options, cmd, host, project_dir, gene).communicate()
+        if len(result[0]) != 0:
+            logger.info(result[0])
+        if len(result[1]) != 0:
+            logger.error(result[1])
 
 
 def run_remote(remote_cmd, host, project_dir, gene):
-    result = run_remote_process(remote_cmd, host, project_dir, gene).communicate()
-    logger.info(result[0])
-    logger.error(result[1])
+    result = run_process(remote_cmd, host, project_dir, gene).communicate()
+    if len(result[0]) != 0:
+        logger.info(result[0])
+    if len(result[1]) != 0:
+        logger.error(result[1])
     return result
 
 
