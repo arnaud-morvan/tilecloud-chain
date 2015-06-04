@@ -22,9 +22,9 @@ before_install:
 - sudo rm -f /etc/apt/sources.list.d/pgdg-source.list
 - sudo rm -rf /usr/local
 - echo 'yes' | sudo add-apt-repository ppa:stephane-brunner/precise
-#- echo 'yes' | sudo add-apt-repository ppa:mapnik/v2.2.0
+- echo 'yes' | sudo add-apt-repository ppa:mapnik/v2.2.0
 - sudo apt-get update
-- sudo apt-get install -y --force-yes libmapnik-dev apache2 deploy libdb-dev optipng postgresql-9.1-postgis-2.0=2.0.3-2~precise4 postgis=2.0.3-2~precise4
+- sudo apt-get install -y --force-yes libmapnik-dev apache2 cgi-mapserver deploy libdb-dev optipng postgresql-9.1-postgis-2.0=2.0.3-2~precise4 postgis=2.0.3-2~precise4
 
 - sudo -u postgres tilecloud_chain/tests/create_test_data.sh
 - sudo cp tilecloud_chain/tests/apache.conf /etc/apache2/sites-enabled/apache.conf
