@@ -162,8 +162,7 @@ def main():
         processes = []
         for i in range(gene.config['ec2']['number_process']):
             processes.append(
-                run_process(
-                    options,
+                run_remote_process(
                     "%s/generate_tiles %s" % (
                         path.dirname(sys.argv[0]),
                         ' '.join([str(a) for a in arguments]), host, project_dir, gene
@@ -212,16 +211,14 @@ def main():
             run(options, 'sudo shutdown 0', host, project_dir, gene)
         sys.exit(0)
 
-    """
-    if options.fill_queue:  # pragma: no cover
+    if options.fill_queue and not options.local:  # pragma: no cover
         print("==== Till queue ====")
         # TODO test
         arguments = _get_arguments(options)
         arguments.extend(['--role', 'master', '--quiet'])
 
         project_dir = None if options.local else gene.config['ec2']['code_folder']
-        print path.abspath(path.dirname(sys.argv[0]))
-        run_process(
+        run_remote_process(
             options,
             "%s/generate_tiles %s" % (
                 path.dirname(sys.argv[0]),
@@ -236,12 +233,11 @@ def main():
                 attributes['ApproximateNumberOfMessagesNotVisible'],
             )
         )
-        """
 
     if options.tiles_gen:  # pragma: no cover
         print("==== Generate tiles ====")
 
-        if options.wait:
+        if options.wait and not options.local:
             print("")
 
             class Status(Thread):
@@ -261,17 +257,25 @@ def main():
             status_thread.start()
 
         arguments = _get_arguments(options)
-        arguments.extend(['--role', 'slave', '--quiet'])
+        arguments.extend(['--quiet'])
+        if not options.local:
+            arguments.extend(['--role', 'slave'])
 
         project_dir = None if options.local else gene.config['ec2']['code_folder']
         for i in range(gene.config['ec2']['number_process']):
-            run_process(
-                options,
-                "%s/generate_tiles %s" % (
-                    path.dirname(sys.argv[0]),
-                    ' '.join([str(a) for a in arguments])
-                ), host, project_dir, gene
-            )
+            if options.local:
+                run_local_process(
+                    "%s/generate_tiles --local-process-number %i %s" % (
+                        path.dirname(sys.argv[0]), i, ' '.join([str(a) for a in arguments])
+                    )
+                )
+            else:
+                run_remote_process(
+                    "%s/generate_tiles %s" % (
+                        path.dirname(sys.argv[0]),
+                        ' '.join([str(a) for a in arguments])
+                    ), host, project_dir, gene
+                )
 
         print('Tile generation started')
 
@@ -347,20 +351,19 @@ def run_local(cmd):
 
     logger.debug('Run: %s.' % ' '.join([quote(c) for c in cmd]))
     result = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()
-    logger.info(result[0])
-    logger.error(result[1])
+    if len(result[0]) != 0:
+        logger.info(result[0])
+    if len(result[1]) != 0:
+        logger.error(result[1])
     return result
 
 
-def run_process(options, cmd, host, project_dir, gene):
-    if options.local:
-        if type(cmd) != list:
-            cmd = cmd.split(' ')
-        logger.debug('Run: %s.' % ' '.join([quote(c) for c in cmd]))
-        task = Run(cmd)
-        task.start()
-    else:
-        return run_remote_process(cmd, host, project_dir, gene)
+def run_local_process(cmd):
+    if type(cmd) != list:
+        cmd = cmd.split(' ')
+    logger.debug('Run: %s.' % ' '.join([quote(c) for c in cmd]))
+    task = Run(cmd)
+    task.start()
 
 
 def run_remote_process(remote_cmd, host, project_dir, gene):
@@ -399,10 +402,6 @@ class Run(Thread):
 
     def run(self):
         subprocess.call(self.cmd)
-        #result = subprocess.check_output(self.cmd, stderr=STDOUT)
-        print("End")
-        #if len(result) != 0:
-        #    logger.error(result)
 
 
 def run(options, cmd, host, project_dir, gene):
@@ -414,7 +413,7 @@ def run(options, cmd, host, project_dir, gene):
         #if len(result) != 0:
         #    logger.error(result)
     else:
-        result = run_process(options, cmd, host, project_dir, gene).communicate()
+        result = run_remote_process(cmd, host, project_dir, gene).communicate()
         if len(result[0]) != 0:
             logger.info(result[0])
         if len(result[1]) != 0:
@@ -422,7 +421,7 @@ def run(options, cmd, host, project_dir, gene):
 
 
 def run_remote(remote_cmd, host, project_dir, gene):
-    result = run_process(remote_cmd, host, project_dir, gene).communicate()
+    result = run_remote_process(remote_cmd, host, project_dir, gene).communicate()
     if len(result[0]) != 0:
         logger.info(result[0])
     if len(result[1]) != 0:
