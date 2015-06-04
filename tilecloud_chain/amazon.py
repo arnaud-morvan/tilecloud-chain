@@ -165,8 +165,8 @@ def main():
                 run_remote_process(
                     "%s/generate_tiles %s" % (
                         path.dirname(sys.argv[0]),
-                        ' '.join([str(a) for a in arguments]), host, project_dir, gene
-                    )
+                        ' '.join([str(a) for a in arguments])
+                    ), host, project_dir, gene
                 )
             )
 
