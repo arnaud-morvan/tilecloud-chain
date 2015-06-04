@@ -13,7 +13,7 @@ from functools import reduce
 from threading import Thread
 from boto import sns
 from datetime import timedelta
-from subprocess import Popen, PIPE, STDOUT
+from subprocess import Popen, PIPE
 from argparse import ArgumentParser
 
 from tilecloud_chain import TileGeneration, add_comon_options, quote
@@ -409,9 +409,6 @@ def run(options, cmd, host, project_dir, gene):
         if type(cmd) != list:
             cmd = cmd.split(' ')
         subprocess.call(cmd)
-        #result = subprocess.check_output(cmd, stderr=STDOUT)
-        #if len(result) != 0:
-        #    logger.error(result)
     else:
         result = run_remote_process(cmd, host, project_dir, gene).communicate()
         if len(result[0]) != 0:
